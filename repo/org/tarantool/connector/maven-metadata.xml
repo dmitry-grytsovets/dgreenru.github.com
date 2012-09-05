@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <groupId>org.tarantool</groupId>
+  <artifactId>connector</artifactId>
+  <versioning>
+    <versions>
+      <version>0.0.9-SNAPSHOT</version>
+    </versions>
+    <lastUpdated>20120905085734</lastUpdated>
+  </versioning>
+</metadata>
