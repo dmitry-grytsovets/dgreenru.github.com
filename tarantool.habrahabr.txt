@@ -26,13 +26,33 @@ $ head -1 /tmp/user
 
 Скопировав файл на нужный сервер или локальный компьютер, можно приступить к его обработки и конвертации в формат Tarantool Box. В примере ниже, для простоты, не рассматриваются эскейп последовательности. Если у вас в таблицах встречаются символы табуляции, переноса строки, возврата карретки, обратный слеш или поля содержат NULL значения, вам нужно добавить их обработку самостоятельно.  
 
-BufferedReader reader = new BufferedReader(new GzipInputStream(new FileInputStream("/tmp/user.gz"));
-SnapshotWriter writer = new SnapshotWriter(new FileOuputStream("/tmp/user.snap").getChannel());
+BufferedReader reader = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream("/tmp/user.gz")), "utf-8"));
+SnapshotWriter writer = new SnapshotWriter(new FileOutputStream("/tmp/user.snap").getChannel());
 String line = null;
-DateFormat df = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
-Pattern pattern=Pattern.compile("\t");
-while((line = reader.readLine())!=null) {
-	String[] values = pattern.matcher(line).split();
+DateFormat indf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+DateFormat outdf = new SimpleDateFormat("yyyyMMddhhmmss");
+Pattern pattern = Pattern.compile("\t");
+while ((line = reader.readLine()) != null) {
+	try {
+		String[] values = pattern.split(line);
+		if (values.length == 5) {
+			Integer id = Integer.parseInt(values[0]);
+			String username = values[1];
+			String email = values[2];
+			byte[] enabled = { Byte.valueOf(values[3]) };
+			Long registered = Long.parseLong(outdf.format(indf.parse(values[4])));
+
+			Tuple tuple = new Tuple(5).setInt(0, id).setString(1, username, "UTF-8")
+			.setString(2, email, "UTF-8").setBytes(3, enabled).setLong(4, registered);
+
+			writer.writeRow(0, tuple);
+		} else {
+			System.err.println("Line should be splited in 5 parts, but has " + values.length + " for " + line);
+		}
+	} catch (Exception e) {
+		System.err.println("Can't parse line " + line);
+		e.printStackTrace();
+	}
 }
 writer.close();
 reader.close();
@@ -84,6 +104,34 @@ $ tarantool_box --background
 $ ps -C tarantool_box -o pid=,cmd=
  8853 tarantool_box: primary pri: 33013 sec: 33014 adm: 33015
 
-так же посмотрите файл tarantool.log 
+так же посмотрите файл tarantool.log, в случае успешного запуска он будет заканчиваться на строки похожие на приведённые ниже
+ле
+1350504007.249 7127 1/sched _ I> Space 0: done
+1350504007.249 7127 101/33013/primary _ I> bound to port 33013
+1350504007.249 7127 101/33013/primary _ I> I am primary
+1350504007.249 7127 102/33014/secondary _ I> bound to port 33014
+1350504007.250 7127 103/33015/admin _ I> bound to port 33015
+1350504007.251 7127 1/sched _ C> log level 4
+1350504007.251 7127 1/sched _ C> entering event loop					
+
+Далее корректность вставки данных можно проверить простым способом
+
+$ tarantool -a 127.0.0.1
+127.0.0.1> select * from t0 where k0=1                                                                                                                                 
+Select OK, 1 rows affected
+[1, 'username', 'email@domain.tld', '\x01', '\x21\x8b\xe4\xc9\x4c\x12']
+127.0.0.1> select * from t0 where k1 = 'username'                                                                                
+Select OK, 1 rows affected
+[1, 'username', 'email@domain.tld', '\x01', '\x21\x8b\xe4\xc9\x4c\x12']
+127.0.0.1> select * from t0 where k2 = 'email@domain.tld'
+Select OK, 1 rows affected
+[1, 'username', 'email@domain.tld', '\x01', '\x21\x8b\xe4\xc9\x4c\x12']
+
+т.е. мы проверили нахождения данных по 3-м ключам, указанным нами в конфиге. Далее можно посмотреть количество потребляемой процессом памяти в системе и отчёт команды <i>show slab</i> в консоле Tarantool Box.
+
+Tarantool Box поднят, теперь нужно позаботится о резервном копирование данных и поддержке таблицы MySQL в актуальном состояние на случай, если какие-то запросы используют данные из неё в своих целях. Это достаточно просто организовать при помощи класса ReplicationClient. Он позволит иметь почти полную резервную копию xlog без использования полноценного slave сервера и организовать обновление таблицы в MySQL без особых затрат ресурсов и времени. 
+
+
+
 
 
