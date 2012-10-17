@@ -1,0 +1,89 @@
+Краткое описание Tarantool Box:
+
+    Tarantool Box -- это однопоточное ключ-кортеж хранилище данных. Все данные и индексы хранятся в оперативной памяти. Значения составляют кортеж, далее tuple, кортежи -- простарнство, далее space, пространства -- модель данных. Поддерживаются 3 типа данных: 32 битное беззнаковое целом, 64 битное беззнаковое целое и бинарная строка, далее NUM, NUM64 и STR соответственно. Для любого пространства должны быть определены тип и структура первичного ключа, например: HASH по полям 1,2 где 1 -- NUM, а 2 -- NUM64. Вторичные индексы задаются точно так же как и первичные. DML операции атомарны на уровне кортежа и выполняются только по первичному индексу. Для выполнения нескольких операций атомарно нужно использовать встроенные язык Lua. Сохранность данных обеспечивается путём сохранения снимка текушего состояния, далее snapshot, и бинарного лога, далее xlog. Для хранения кортежей используется slab. 
+
+Пример переноса таблицы MySQL в Tarantool Box:
+
+mysql> desc user;
++------------+--------------+------+-----+-------------------+----------------+
+| Field      | Type         | Null | Key | Default           | Extra          |
++------------+--------------+------+-----+-------------------+----------------+
+| id         | int(11)      | NO   | PRI | NULL              | auto_increment |
+| username   | varchar(255) | NO   | UNI | NULL              |                |
+| email      | varchar(255) | NO   | UNI | NULL              |                |
+| enabled    | tinyint(1)   | NO   |     | 1                 |                |
+| registered | timestamp    | NO   |     | CURRENT_TIMESTAMP |                |
++------------+--------------+------+-----+-------------------+----------------+
+5 rows in set
+
+Первичный индекс id и 2 вторичных уникальных индекса username и email. Из непереносимых по умолчанию мест можно выделить auto_increment и timestamp. Для первого можно использовать хранимую процедуру box.auto_increment, а для второго можно хранить данные в формате yyyyMMddhhmmss или секундах. Если таблица user достаточно небольшая, то можно просто прочитать данные из mysql и вставить в Tarantool Box, на этой задаче я останавливаться не буду, а расскажу, что делать если таблица очень большая, т.е. содержить очень много записей, пусть и каждая из них небольшого размера. Для начала нужно выгрузить данные в удобные для нас формат, желательно не сильно занимая при этом ресурсы сервера.
+
+mysql> select * into outfile '/tmp/user' from user;
+Query OK, 73890541 rows affected
+
+$ head -1 /tmp/user
+1	username	email@domain.tld	1	2012-10-14 01:27:05
+
+Скопировав файл на нужный сервер или локальный компьютер, можно приступить к его обработки и конвертации в формат Tarantool Box. В примере ниже, для простоты, не рассматриваются эскейп последовательности. Если у вас в таблицах встречаются символы табуляции, переноса строки, возврата карретки, обратный слеш или поля содержат NULL значения, вам нужно добавить их обработку самостоятельно.  
+
+BufferedReader reader = new BufferedReader(new GzipInputStream(new FileInputStream("/tmp/user.gz"));
+SnapshotWriter writer = new SnapshotWriter(new FileOuputStream("/tmp/user.snap").getChannel());
+String line = null;
+DateFormat df = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+Pattern pattern=Pattern.compile("\t");
+while((line = reader.readLine())!=null) {
+	String[] values = pattern.matcher(line).split();
+}
+writer.close();
+reader.close();
+
+В результате имеем файл
+
+$ ls -sh /tmp/user.snap
+16.1G /tmp/user.snap
+
+теперь необходимо настроить space 0 соответствующим образом.
+
+# Этот параметр ограничевает суммарный размер памяти выделенной под slab блоки. 
+# Индексы и другие накладные расходы хранятся вне slab, 
+# поэтому суммарная память процесса может быть до 2х больше.
+# В нашем случае логично поставить здесь 24 гигабайта.
+slab_alloc_arena = 24
+
+# Так же имеет смысл откорректировать количество записей в одном xlog файле.
+rows_per_wal = 500000
+
+# И конечно же конфигурация ключей space 0
+space[0].enabled = 1
+# id. Чтобы использовать box.auto_increment тип дерева должен быть TREE. 
+space[0].index[0].type = "TREE"
+space[0].index[0].unique = 1
+space[0].index[0].key_field[0].fieldno = 0
+space[0].index[0].key_field[0].type = "NUM"
+
+#username
+space[0].index[1].type = "HASH"
+space[0].index[1].unique = 1
+space[0].index[1].key_field[0].fieldno = 1
+space[0].index[1].key_field[0].type = "STR"
+
+#password
+space[0].index[2].type = "HASH"
+space[0].index[2].unique = 1
+space[0].index[2].key_field[0].fieldno = 2
+space[0].index[2].key_field[0].type = "STR"
+
+
+Далее нам нужно заменить 00000000000000000001.snap находящегося в папке work_dir из конфигурационного файла на созданный нами файл.
+
+$ mv /tmp/user.snap /var/lib/tarantool/00000000000000000001.snap
+
+и попробовать запустить сервер
+
+$ tarantool_box --background   
+$ ps -C tarantool_box -o pid=,cmd=
+ 8853 tarantool_box: primary pri: 33013 sec: 33014 adm: 33015
+
+так же посмотрите файл tarantool.log 
+
+
