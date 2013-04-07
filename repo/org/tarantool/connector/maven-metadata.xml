@@ -6,7 +6,8 @@
     <release>0.1.3</release>
     <versions>
       <version>0.1.3</version>
+      <version>0.1.4-JDK6-SNAPSHOT</version>
     </versions>
-    <lastUpdated>20130305132051</lastUpdated>
+    <lastUpdated>20130407141242</lastUpdated>
   </versioning>
 </metadata>
