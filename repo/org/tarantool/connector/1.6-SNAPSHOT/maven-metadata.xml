@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata modelVersion="1.1.0">
+  <groupId>org.tarantool</groupId>
+  <artifactId>connector</artifactId>
+  <version>1.6-SNAPSHOT</version>
+  <versioning>
+    <snapshot>
+      <timestamp>20150325.164241</timestamp>
+      <buildNumber>1</buildNumber>
+    </snapshot>
+    <lastUpdated>20150325164241</lastUpdated>
+    <snapshotVersions>
+      <snapshotVersion>
+        <extension>jar</extension>
+        <value>1.6-20150325.164241-1</value>
+        <updated>20150325164241</updated>
+      </snapshotVersion>
+      <snapshotVersion>
+        <extension>pom</extension>
+        <value>1.6-20150325.164241-1</value>
+        <updated>20150325164241</updated>
+      </snapshotVersion>
+    </snapshotVersions>
+  </versioning>
+</metadata>
